@@ -165,6 +165,8 @@ memory = MemorySaver()
 graph_app = workflow.compile(checkpointer=memory)
 
 
+# Print ASCII graph visualization on startup
+print(graph_app.get_graph().draw_ascii())
 # --- 5. FastAPI Endpoint Handlers ---
 
 
