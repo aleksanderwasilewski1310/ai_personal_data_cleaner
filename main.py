@@ -1,4 +1,24 @@
-# ========MAIN AGENTIC MODULE=======
+"""
+AI Personal Data Cleaner & Parser Module.
+
+This module implements a stateful, production-ready FastAPI application integrated
+with a LangGraph (v0.2+) workflow. It automates the process of extracting, cleaning,
+and structuring raw, personal text data into a standardized dictionary format.
+
+Architecture Features:
+    1. Stateful LangGraph Execution: Utilizes MemorySaver checkpointers to persist
+       workflow state across asynchronous, stateless HTTP requests.
+    2. Human-in-the-Loop (HITL): Implements native LangGraph execution interrupts
+       (`interrupt()`) to halt processing and safely await manual review via an API endpoint.
+    3. LLM-Powered Extraction: Leverages OpenAI's structured outputs (`with_structured_output`)
+       to enforce schema compliance and dynamically process user correction feedback.
+
+Target Schema Fields:
+    - first_name, last_name, address, city, date_of_birth, country
+
+Author: Aleksander Wasilewski
+Date: June 2026
+"""
 
 # pylint: disable=import-error
 # pylint: disable=no-name-in-module
@@ -103,8 +123,9 @@ def parse_input_node(state: GraphState) -> Dict[str, Any]:
             (
                 "system",
                 (
-                    "You are an advanced AI data extraction assistant. Your task is to extract "
-                    "personal data from raw, unstructured text and map it accurately to the requested schema.\n"
+                    "You are an advanced AI data extraction assistant."
+                    "Your task is to extract personal data from raw, unstructured text"
+                    " and map it accurately to the requested schema.\n"
                     "If 'Previous Attempt' and 'User Feedback' are provided, refine the extraction "
                     "by addressing the issues highlighted in the feedback."
                 ),
@@ -186,12 +207,12 @@ WORKFLOW.add_conditional_edges(
 )
 
 # MemorySaver checkpointer acts as the state store across async stateless HTTP requests
-memory = MemorySaver()
-graph_app = WORKFLOW.compile(checkpointer=memory)
+MEMORY = MemorySaver()
+GRAPH_APP = WORKFLOW.compile(checkpointer=MEMORY)
 
 
 # Print ASCII graph visualization on startup
-print(graph_app.get_graph().draw_ascii())
+print(GRAPH_APP.get_graph().draw_ascii())
 # --- 5. FastAPI Endpoint Handlers ---
 
 
@@ -207,10 +228,10 @@ async def start_processing(payload: StartProcessRequest):
     initial_state = {"input_text": payload.text}
 
     # Execute the graph. It will pause automatically at the human_review_node interrupt.
-    current_state = graph_app.invoke(initial_state, config)
+    current_state = GRAPH_APP.invoke(initial_state, config)
 
     # Fetch current checkpoint metadata to confirm the interrupt status
-    state_info = graph_app.get_state(config)
+    state_info = GRAPH_APP.get_state(config)
 
     return {
         "thread_id": thread_id,
@@ -228,7 +249,7 @@ async def review_processing(payload: ReviewRequest):
     config = {"configurable": {"thread_id": payload.thread_id}}
 
     # Verify if the thread exists and is currently waiting on an interrupt
-    state_info = graph_app.get_state(config)
+    state_info = GRAPH_APP.get_state(config)
     if not state_info.next:
         raise HTTPException(
             status_code=400,
@@ -241,10 +262,10 @@ async def review_processing(payload: ReviewRequest):
     )
 
     # Resume the workflow precisely where it was suspended
-    final_state = graph_app.invoke(resume_action, config)
+    final_state = GRAPH_APP.invoke(resume_action, config)
 
     # Re-evaluate the new checkpoint state post-execution
-    new_state_info = graph_app.get_state(config)
+    new_state_info = GRAPH_APP.get_state(config)
 
     if not new_state_info.next:
         # The graph reached the END state successfully
