@@ -1,6 +1,9 @@
+# ========MAIN AGENTIC MODULE=======
+
+# pylint: disable=import-error
+# pylint: disable=no-name-in-module
 import os
 import uuid
-from dotenv import load_dotenv
 from typing import Any, Dict, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -11,6 +14,7 @@ from langchain_openai.chat_models import AzureChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -22,11 +26,12 @@ LLM = AzureChatOpenAI(
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
 )
 
-app = FastAPI(title="LangGraph Personal Data Parser API")
+APP = FastAPI(title="LangGraph Personal Data Parser API")
 
 # --- 1. Pydantic Schemas for Data Validation and API Contracts ---
 
 
+# pylint: disable=too-few-public-methods
 class PersonalData(BaseModel):
     """Target schema for structured personal data extraction."""
 
@@ -42,6 +47,7 @@ class PersonalData(BaseModel):
     country: Optional[str] = Field(None, description="Country of residence")
 
 
+# pylint: disable=too-few-public-methods
 class GraphState(BaseModel):
     """Represents the shared state of the LangGraph workflow."""
 
@@ -53,10 +59,29 @@ class GraphState(BaseModel):
 
 # HTTP Request Payloads
 class StartProcessRequest(BaseModel):
+    """
+    Represents the HTTP request payload required to initiate the data extraction process.
+
+    Attributes:
+        text (str): The raw, unstructured text containing personal data to be parsed.
+    """
+
     text: str
 
 
 class ReviewRequest(BaseModel):
+    """
+    Represents the HTTP request payload containing the human review decision
+    to resume a suspended graph thread.
+
+    Attributes:
+        thread_id (str): The unique identifier of the stateful workflow session.
+        approved (bool): Set to True to finalize the data, or False to reject
+            and trigger a correction loop.
+        feedback (Optional[str]): Detailed instructions for the LLM on what to correct.
+            Required if approved is False. Defaults to None.
+    """
+
     thread_id: str
     approved: bool
     feedback: Optional[str] = None
@@ -143,18 +168,18 @@ def route_after_review(state: GraphState):
 
 # --- 4. Graph Construction and Compilation ---
 
-workflow = StateGraph(GraphState)
+WORKFLOW = StateGraph(GraphState)
 
 # Registering nodes to the graph blueprint
-workflow.add_node("parse_input_node", parse_input_node)
-workflow.add_node("human_review_node", human_review_node)
+WORKFLOW.add_node("parse_input_node", parse_input_node)
+WORKFLOW.add_node("human_review_node", human_review_node)
 
 # Defining execution flow edges
-workflow.add_edge(START, "parse_input_node")
-workflow.add_edge("parse_input_node", "human_review_node")
+WORKFLOW.add_edge(START, "parse_input_node")
+WORKFLOW.add_edge("parse_input_node", "human_review_node")
 
 # Conditional routing out of the Human Review node based on user approval
-workflow.add_conditional_edges(
+WORKFLOW.add_conditional_edges(
     "human_review_node",
     route_after_review,
     {END: END, "parse_input_node": "parse_input_node"},
@@ -162,7 +187,7 @@ workflow.add_conditional_edges(
 
 # MemorySaver checkpointer acts as the state store across async stateless HTTP requests
 memory = MemorySaver()
-graph_app = workflow.compile(checkpointer=memory)
+graph_app = WORKFLOW.compile(checkpointer=memory)
 
 
 # Print ASCII graph visualization on startup
@@ -170,7 +195,7 @@ print(graph_app.get_graph().draw_ascii())
 # --- 5. FastAPI Endpoint Handlers ---
 
 
-@app.post("/process/start")
+@APP.post("/process/start")
 async def start_processing(payload: StartProcessRequest):
     """
     Initializes the stateful graph execution thread.
@@ -195,7 +220,7 @@ async def start_processing(payload: StartProcessRequest):
     }
 
 
-@app.post("/process/review")
+@APP.post("/process/review")
 async def review_processing(payload: ReviewRequest):
     """
     Resumes a frozen graph thread with human input (approval or correction feedback).
@@ -228,16 +253,15 @@ async def review_processing(payload: ReviewRequest):
             "message": "Data successfully approved and verified.",
             "final_data": final_state.get("parsed_data"),
         }
-    else:
-        # The graph routed back to parse_input_node and is halted again with new data
-        return {
-            "status": "Returned for correction",
-            "message": "Data rejected by user. LLM is re-processing based on provided feedback.",
-            "current_data": final_state.get("parsed_data"),
-        }
+    # The graph routed back to parse_input_node and is halted again with new data
+    return {
+        "status": "Returned for correction",
+        "message": "Data rejected by user. LLM is re-processing based on provided feedback.",
+        "current_data": final_state.get("parsed_data"),
+    }
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(APP, host="127.0.0.1", port=8000)
