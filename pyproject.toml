@@ -1,0 +1,16 @@
+[project]
+name = "ai-personal-data-cleaner"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "dotenv>=0.9.9",
+    "fastapi>=0.136.3",
+    "grandalf>=0.8",
+    "langchain-openai>=1.2.2",
+    "langgraph>=1.2.4",
+    "pre-commit>=4.6.0",
+    "pydantic>=2.13.4",
+    "uvicorn>=0.48.0",
+]
