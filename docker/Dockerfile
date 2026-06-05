@@ -40,5 +40,14 @@ COPY . .
 # FastAPI application defaults to port 8000
 EXPOSE 8000
 
+# Create a system group and a non-root user without a home directory or login shell
+RUN groupadd -r appgroup && useradd -r -g appgroup -s /sbin/nologin appuser
+
+# Change ownership of the application directory to the non-root user
+RUN chown -R appuser:appgroup /app
+
+# Switch the execution context to the secure non-root user
+USER appuser
+
 # Command to launch the Uvicorn ASGI server
 CMD ["uvicorn", "main:APP", "--host", "0.0.0.0", "--port", "8000"]
